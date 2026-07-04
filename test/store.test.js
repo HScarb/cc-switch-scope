@@ -1,14 +1,23 @@
 'use strict';
 
-const { test } = require('node:test');
+const { test, after } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { loadStore } = require('../src/store');
 
+// 记录本文件所有测试创建的临时目录，文件级统一在 after 钩子中清理
+const tmpDirs = [];
+after(() => {
+  for (const dir of tmpDirs) {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 function tempDir(files = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ccscope-store-'));
+  tmpDirs.push(dir);
   for (const [name, content] of Object.entries(files)) {
     fs.writeFileSync(path.join(dir, name), content);
   }

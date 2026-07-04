@@ -1,16 +1,25 @@
 'use strict';
 
-const { test } = require('node:test');
+const { test, after } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { loadFromDb } = require('../src/source-db');
 
+// 记录本文件所有测试创建的临时目录，文件级统一在 after 钩子中清理
+const tmpDirs = [];
+after(() => {
+  for (const dir of tmpDirs) {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 /** 建最小 schema（对齐 schema.rs 的 providers/settings 相关列）并插入 fixture */
 function makeDb({ providers = [], commonConfig } = {}) {
   const { DatabaseSync } = require('node:sqlite');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ccscope-dbtest-'));
+  tmpDirs.push(dir);
   const dbPath = path.join(dir, 'cc-switch.db');
   const db = new DatabaseSync(dbPath);
   db.exec(`CREATE TABLE providers (
@@ -96,6 +105,7 @@ test('通用配置行缺失 → {}；损坏 → {} + 警告', () => {
 
 test('数据库不可读：报中文错误且含路径', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ccscope-dbtest-'));
+  tmpDirs.push(dir);
   const notDb = path.join(dir, 'cc-switch.db');
   fs.writeFileSync(notDb, 'not a sqlite file at all, definitely not.');
   assert.throws(() => loadFromDb(notDb), (err) => err.message.includes(notDb));
