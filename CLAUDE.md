@@ -11,8 +11,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 技术约束
 
 - Node.js ≥ 22.13.0，**零 npm 运行时依赖**：SQLite 用内置 `node:sqlite`（只读打开；注意拦截其 ExperimentalWarning），交互菜单手写 readline，测试用 `node:test`
-- 数据目录可被用户自定义：必须先经 `paths.js` 解析（`CC_SWITCH_DIR` 环境变量 → Tauri Store `app_paths.json` 的 `app_config_dir_override` → 默认 `~/.cc-switch`），不可硬编码
-- Windows 上 spawn `claude.cmd` 必须 `shell: true`（Node 18.20+），settings 一律经临时文件传给 `--settings`，不传 JSON 字符串
+- 数据目录可被用户自定义：必须先经 `paths.js` 解析（`CC_SWITCH_DIR` 环境变量 → Tauri Store `app_paths.json` 的 `app_config_dir_override`（支持 `~` 前缀展开）→ 默认 `~/.cc-switch`，Windows 上默认目录无 db 时回退 `HOME/.cc-switch`），不可硬编码
+- Windows 上 spawn `claude`（不带扩展名）且 `shell: true`（Node 18.20+ 强制 .cmd 走 shell；cmd.exe 按 PATHEXT 可同时覆盖 claude.cmd/claude.exe）；shell 模式下 Node 不做引号处理，settings 路径与透传参数须显式加双引号；settings 一律经临时文件传给 `--settings`，不传 JSON 字符串
 - 深合并语义必须对齐 cc-switch 的 `json_deep_merge`：叶子冲突时通用配置获胜
 
 ## 参考仓库（`ref/`，只读，各自有独立 .git，不纳入本仓库版本管理）
@@ -35,4 +35,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 常用命令
 
-项目尚未初始化脚手架。初始化后在此补充：安装依赖、运行（`node src/cli.js`）、测试（`node --test`）等实际命令。
+- 运行：`node src/cli.js --list`（用 `CC_SWITCH_DIR=<fixture目录>` 隔离真实数据）
+- 测试：`npm test`（即 `node --test "test/*.test.js"`；`node --test test/` 在 Windows Node 24 下不可用）
+- 本地安装验证：`npm link` 后直接运行 `ccscope`
