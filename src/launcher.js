@@ -49,7 +49,11 @@ function launch(provider, effectiveConfig, { noSkip = false, extraArgs = [] } = 
   console.log(`→ Launching [${provider.name}]`);
 
   return new Promise((resolve) => {
-    const child = spawn(spec.cmd, spec.args, spec.options);
+    // shell:true 时 Node 会把 args 拼进命令行交给 cmd.exe，但传 args 数组会触发 DEP0190；
+    // 自己拼成单条命令字符串（buildSpawnSpec 已保证引号），绕开该告警，行为不变
+    const child = spec.options.shell
+      ? spawn([spec.cmd, ...spec.args].join(' '), spec.options)
+      : spawn(spec.cmd, spec.args, spec.options);
     const finish = (code) => {
       try {
         fs.unlinkSync(settingsPath);
