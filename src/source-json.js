@@ -48,13 +48,19 @@ function parseConfigJson(content, filePath) {
   const current = typeof claude.current === 'string' ? claude.current : '';
 
   const providers = Object.entries(providersMap)
-    .map(([id, p]) => ({
-      name: typeof p.name === 'string' && p.name !== '' ? p.name : id,
-      config: isPlainObject(p.settingsConfig) ? p.settingsConfig : { env: {} },
-      commonConfigEnabled: p.meta?.commonConfigEnabled === true,
-      isCurrent: id === current,
-      sortIndex: typeof p.sortIndex === 'number' ? p.sortIndex : undefined,
-    }))
+    .map(([id, p]) => {
+      // 供应商条目非对象时（null、string 等）归一化为 {}
+      if (!isPlainObject(p)) {
+        p = {};
+      }
+      return {
+        name: typeof p.name === 'string' && p.name !== '' ? p.name : id,
+        config: isPlainObject(p.settingsConfig) ? p.settingsConfig : { env: {} },
+        commonConfigEnabled: p.meta?.commonConfigEnabled === true,
+        isCurrent: id === current,
+        sortIndex: typeof p.sortIndex === 'number' ? p.sortIndex : undefined,
+      };
+    })
     .sort(compareProviders);
 
   // 通用配置：common_config_snippets.claude 优先，回退旧字段；值是 JSON 字符串需二次 parse

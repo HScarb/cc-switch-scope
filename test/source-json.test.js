@@ -93,3 +93,21 @@ test('claude 段缺失：返回空 providers 而非崩溃', () => {
   const r = parseConfigJson('{"version":2}', '/x/config.json');
   assert.deepEqual(r.providers, []);
 });
+
+test('供应商条目为 null 等非对象：按空对象容错处理', () => {
+  const root = JSON.parse(v2Config({ providers: { p1: { name: 'Valid' }, p2: {} } }));
+  root.claude.providers.p2 = null;
+  root.claude.providers.p3 = 'string';
+  root.claude.providers.p4 = 123;
+  const r = parseConfigJson(JSON.stringify(root), '/x/config.json');
+  assert.equal(r.providers.length, 4);
+  // p1 正常
+  assert.equal(r.providers[0].name, 'Valid');
+  // p2、p3、p4 都降级为空对象，name 回退 id，config 回退 { env: {} }，commonConfigEnabled 为 false
+  const nullEntries = r.providers.filter((p) => ['p2', 'p3', 'p4'].includes(p.name));
+  assert.equal(nullEntries.length, 3);
+  nullEntries.forEach((p) => {
+    assert.deepEqual(p.config, { env: {} });
+    assert.equal(p.commonConfigEnabled, false);
+  });
+});
