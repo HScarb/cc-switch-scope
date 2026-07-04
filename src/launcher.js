@@ -5,21 +5,29 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { resolveClaudeCommand } = require('./claude-cmd');
 
 /**
  * 组装 spawn 规格（纯函数，设计 §7）。
- * Windows：spawn 'claude'（不带扩展名）+ shell:true —— Node 18.20+ 强制 .cmd 走 shell，
- * cmd.exe 按 PATHEXT 同时覆盖 npm 的 claude.cmd 与原生安装器的 claude.exe。
+ * Windows 优先直接 spawn 解析出的真实目标（resolved：claude.exe 或 node+cli.js）——
+ * 绕过 cmd.exe，Ctrl+C 不会弹「终止批处理操作吗(Y/N)?」，参数也无需引号处理。
+ * 解析不出时回退：spawn 'claude'（不带扩展名）+ shell:true —— Node 18.20+ 强制
+ * .cmd 走 shell，cmd.exe 按 PATHEXT 同时覆盖 claude.cmd/claude.exe。
  * shell:true 下 Node 不做引号处理：含空白的参数显式加双引号；
  * 透传参数含双引号直接报错（cmd.exe 转义不可靠，宁可拒绝也不注入）。
  */
-function buildSpawnSpec({ platform, settingsPath, noSkip = false, extraArgs = [] }) {
+function buildSpawnSpec({ platform, settingsPath, noSkip = false, extraArgs = [], resolved = null }) {
   const baseArgs = ['--settings', settingsPath];
   if (!noSkip) baseArgs.push('--dangerously-skip-permissions');
   baseArgs.push(...extraArgs);
 
   if (platform !== 'win32') {
     return { cmd: 'claude', args: baseArgs, options: { stdio: 'inherit' } };
+  }
+  if (resolved) {
+    return resolved.kind === 'exe'
+      ? { cmd: resolved.path, args: baseArgs, options: { stdio: 'inherit' } }
+      : { cmd: process.execPath, args: [resolved.path, ...baseArgs], options: { stdio: 'inherit' } };
   }
 
   for (const arg of extraArgs) {
@@ -40,9 +48,12 @@ function launch(provider, effectiveConfig, { noSkip = false, extraArgs = [] } = 
     os.tmpdir(),
     `ccscope-${crypto.randomBytes(6).toString('hex')}.json`
   );
+  const resolved = process.platform === 'win32'
+    ? resolveClaudeCommand({ env: process.env, existsSync: fs.existsSync, readFileSync: fs.readFileSync })
+    : null;
   // 先组装（win32 参数校验可能 throw），再落盘，避免残留孤儿临时文件
   const spec = buildSpawnSpec({
-    platform: process.platform, settingsPath, noSkip, extraArgs,
+    platform: process.platform, settingsPath, noSkip, extraArgs, resolved,
   });
   // mode 0o600：settings 含 API 密钥，tmpdir 中不可 world-readable（Windows 忽略 mode，无副作用）
   fs.writeFileSync(settingsPath, JSON.stringify(effectiveConfig), { mode: 0o600 });
