@@ -44,7 +44,8 @@ function launch(provider, effectiveConfig, { noSkip = false, extraArgs = [] } = 
   const spec = buildSpawnSpec({
     platform: process.platform, settingsPath, noSkip, extraArgs,
   });
-  fs.writeFileSync(settingsPath, JSON.stringify(effectiveConfig));
+  // mode 0o600：settings 含 API 密钥，tmpdir 中不可 world-readable（Windows 忽略 mode，无副作用）
+  fs.writeFileSync(settingsPath, JSON.stringify(effectiveConfig), { mode: 0o600 });
 
   console.log(`→ Launching [${provider.name}]`);
 
@@ -54,12 +55,30 @@ function launch(provider, effectiveConfig, { noSkip = false, extraArgs = [] } = 
     const child = spec.options.shell
       ? spawn([spec.cmd, ...spec.args].join(' '), spec.options)
       : spawn(spec.cmd, spec.args, spec.options);
-    const finish = (code) => {
+
+    let cleaned = false;
+    const cleanup = () => {
+      if (cleaned) return;
+      cleaned = true;
       try {
         fs.unlinkSync(settingsPath);
       } catch {
         /* 清理尽力而为 */
       }
+    };
+    // Ctrl+C/外部 SIGTERM 时父进程不能先于清理退出：忽略信号本身（子进程共享前台
+    // 进程组会自行收到并处理），等 child 的 exit 事件触发 finish 完成清理
+    const onSignal = () => {};
+    process.on('SIGINT', onSignal);
+    process.on('SIGTERM', onSignal);
+    // 兜底：万一父进程仍以其他路径退出，同步清理临时文件
+    process.on('exit', cleanup);
+
+    const finish = (code) => {
+      cleanup();
+      process.removeListener('SIGINT', onSignal);
+      process.removeListener('SIGTERM', onSignal);
+      process.removeListener('exit', cleanup);
       resolve(code);
     };
     child.on('error', (err) => {
@@ -72,7 +91,10 @@ function launch(provider, effectiveConfig, { noSkip = false, extraArgs = [] } = 
       }
       finish(1);
     });
-    child.on('exit', (code) => finish(code ?? 0));
+    // code 为 null 说明进程被信号杀死，而非正常退出码 0：按惯例映射为 128+信号号
+    child.on('exit', (code, signal) => {
+      finish(code ?? (signal ? 128 + (os.constants.signals[signal] || 0) : 0));
+    });
   });
 }
 

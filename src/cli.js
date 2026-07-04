@@ -67,26 +67,17 @@ async function main() {
   if (parsed.version) { console.log(`ccscope ${version}`); return 0; }
   if (parsed.help) { printHelp(); return 0; }
   if (parsed.unknown.length > 0) {
-    console.error(`未知参数: ${parsed.unknown.join(' ')}（--help 查看用法）`);
-    return 1;
+    console.error(`未知参数: ${parsed.unknown.join(' ')}（--help 查看用法）`); return 1;
   }
 
   const resolved = resolveDataDir({
-    platform: process.platform,
-    env: process.env,
-    homedir: os.homedir(),
-    existsSync: fs.existsSync,
-    readFileSync: fs.readFileSync,
+    platform: process.platform, env: process.env, homedir: os.homedir(),
+    existsSync: fs.existsSync, readFileSync: fs.readFileSync,
   });
   for (const w of resolved.warnings) console.error(`警告: ${w}`);
 
   let store;
-  try {
-    store = loadStore(resolved.dir);
-  } catch (err) {
-    console.error(err.message);
-    return 1;
-  }
+  try { store = loadStore(resolved.dir); } catch (err) { console.error(err.message); return 1; }
   for (const w of store.warnings) console.error(`警告: ${w}`);
 
   const { providers, commonConfig } = store;
@@ -131,9 +122,10 @@ async function main() {
   const effective = buildEffectiveConfig(
     selected.config, commonConfig, selected.commonConfigEnabled
   );
-  return launch(selected, effective, {
-    noSkip: parsed.noSkip, extraArgs: parsed.claudeArgs,
-  });
+  // buildSpawnSpec 的双引号校验等属预期用户错误：只打消息，不带堆栈、不走「内部错误」兜底
+  try {
+    return await launch(selected, effective, { noSkip: parsed.noSkip, extraArgs: parsed.claudeArgs });
+  } catch (err) { console.error(err.message); return 1; }
 }
 
 module.exports = { parseArgs, fuzzyMatch };
