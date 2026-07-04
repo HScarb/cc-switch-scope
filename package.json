@@ -4,6 +4,6 @@
   "description": "Session-scoped Claude Code launcher backed by CC-Switch data",
   "bin": { "ccscope": "src/cli.js" },
   "engines": { "node": ">=22.13.0" },
-  "scripts": { "test": "node --test test/" },
+  "scripts": { "test": "node --test \"test/*.test.js\"" },
   "license": "MIT"
 }
