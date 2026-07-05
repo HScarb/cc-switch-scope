@@ -14,6 +14,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 数据目录可被用户自定义：必须先经 `paths.js` 解析（`CC_SWITCH_DIR` 环境变量 → Tauri Store `app_paths.json` 的 `app_config_dir_override`（支持 `~` 前缀展开）→ 默认 `~/.cc-switch`，Windows 上默认目录无 db 时回退 `HOME/.cc-switch`），不可硬编码
 - Windows 上 spawn `claude`（不带扩展名）且 `shell: true`（Node 18.20+ 强制 .cmd 走 shell；cmd.exe 按 PATHEXT 可同时覆盖 claude.cmd/claude.exe）；shell 模式下 Node 不做引号处理，settings 路径与透传参数须显式加双引号；settings 一律经临时文件传给 `--settings`，不传 JSON 字符串
 - 深合并语义必须对齐 cc-switch 的 `json_deep_merge`：叶子冲突时通用配置获胜
+- claude 会把 `--settings` 与用户级 `~/.claude/settings.json`（cc-switch 当前激活供应商写入）按键合并，只存在于用户级的 env 键（如 `ANTHROPIC_MODEL`）会漏进会话：启动前必须经 `isolate.js` 把这些键在 settings 里显式置空字符串屏蔽（claude 视空串为未设置）；已知残余限制：顶层 `model` 字段不屏蔽（通用配置通常已提供）
 
 ## 参考仓库（`ref/`，只读，各自有独立 .git，不纳入本仓库版本管理）
 

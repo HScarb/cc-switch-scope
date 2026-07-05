@@ -15,6 +15,7 @@ process.emitWarning = function filteredEmitWarning(warning, ...rest) {
 const fs = require('node:fs'); const os = require('node:os');
 const { resolveDataDir } = require('./paths'); const { loadStore } = require('./store');
 const { buildEffectiveConfig } = require('./merge'); const { selectProvider } = require('./menu');
+const { maskLeakedEnvKeys, readUserSettings } = require('./isolate');
 const { launch } = require('./launcher'); const { version } = require('../package.json');
 
 function parseArgs(argv) {
@@ -177,9 +178,16 @@ async function main() {
   const effective = buildEffectiveConfig(
     selected.config, commonConfig, selected.commonConfigEnabled
   );
+  // 屏蔽用户级 settings.json（cc-switch 当前激活供应商）泄漏的 env 键（见 isolate.js）
+  const { settings: liveSettings, warning: liveWarning } = readUserSettings({
+    env: process.env, homedir: os.homedir(),
+    existsSync: fs.existsSync, readFileSync: fs.readFileSync,
+  });
+  if (liveWarning) console.error(`警告: ${liveWarning}`);
+  const isolated = maskLeakedEnvKeys(effective, liveSettings);
   // buildSpawnSpec 的双引号校验等属预期用户错误：只打消息，不带堆栈、不走「内部错误」兜底
   try {
-    return await launch(selected, effective, { noSkip: parsed.noSkip, extraArgs: parsed.claudeArgs });
+    return await launch(selected, isolated, { noSkip: parsed.noSkip, extraArgs: parsed.claudeArgs });
   } catch (err) { console.error(err.message); return 1; }
 }
 
