@@ -3,7 +3,13 @@
   "version": "0.2.0",
   "description": "Session-scoped Claude Code launcher backed by CC-Switch data",
   "bin": { "ccscope": "src/cli.js" },
+  "files": ["src", "README.md", "README.en.md", "LICENSE"],
   "engines": { "node": ">=22.13.0" },
   "scripts": { "test": "node --test \"test/*.test.js\"" },
+  "keywords": ["claude", "claude-code", "cc-switch", "cli", "launcher", "provider-switcher"],
+  "repository": { "type": "git", "url": "git+https://github.com/HScarb/cc-switch-scope.git" },
+  "homepage": "https://github.com/HScarb/cc-switch-scope#readme",
+  "bugs": { "url": "https://github.com/HScarb/cc-switch-scope/issues" },
+  "author": "Scarb",
   "license": "MIT"
 }
