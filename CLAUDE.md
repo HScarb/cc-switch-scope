@@ -38,3 +38,4 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 运行：`node src/cli.js --list`（用 `CC_SWITCH_DIR=<fixture目录>` 隔离真实数据）
 - 测试：`npm test`（即 `node --test "test/*.test.js"`；`node --test test/` 在 Windows Node 24 下不可用）
 - 本地安装验证：`npm link` 后直接运行 `ccscope`
+- 发布 npm：本机默认 registry 是 npmmirror 镜像（只读），必须 `npm publish --registry https://registry.npmjs.org/`，且账号开了 2FA 需带 `--otp=<验证码>`（时效约 30 秒，由用户执行）

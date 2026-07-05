@@ -21,6 +21,12 @@ CC-Switch switches providers globally (it rewrites `~/.claude/settings.json`), s
 ## Install
 
 ```bash
+npm i -g cc-switch-scope
+```
+
+Or from source (for development):
+
+```bash
 git clone https://github.com/HScarb/cc-switch-scope.git
 cd cc-switch-scope
 npm link   # then use ccscope from anywhere
