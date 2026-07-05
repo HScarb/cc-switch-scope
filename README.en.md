@@ -11,6 +11,7 @@ CC-Switch switches providers globally (it rewrites `~/.claude/settings.json`), s
 - Multiple terminals can run different providers simultaneously
 - CC-Switch data is accessed strictly read-only — the GUI's state is never modified
 - Common-config merge semantics match CC-Switch exactly
+- Env keys leaking from `~/.claude/settings.json` (CC-Switch's currently active provider) are masked automatically — your session's model no longer follows the global switch state (v0.3.0+)
 
 ## Requirements
 

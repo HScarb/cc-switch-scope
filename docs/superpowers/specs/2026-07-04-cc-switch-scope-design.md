@@ -35,6 +35,7 @@ cc-switch-scope/
 │   ├── source-db.js       # 新版数据源：node:sqlite 只读 cc-switch.db
 │   ├── source-json.js     # 老版数据源：解析 config.json (v2)
 │   ├── merge.js           # JSON 深合并（对齐 cc-switch json_deep_merge 语义）
+│   ├── isolate.js         # 会话隔离：屏蔽用户级 settings.json 泄漏的 env 键
 │   ├── menu.js            # readline raw mode 方向键选择菜单
 │   └── launcher.js        # 临时 settings 文件 + spawn claude
 └── test/                  # node:test 用例 + fixtures
@@ -93,6 +94,16 @@ cc-switch-scope/
 - 当 `commonConfigEnabled === true` 且通用配置非空：`deepMerge(providerConfig, commonConfig)`——对象↔对象逐键递归；叶子或类型不匹配时**通用配置获胜**（覆盖）
 - 否则直接使用 `providerConfig` 原值
 - 实现为纯函数，不修改输入（返回新对象）
+
+### 会话隔离（isolate.js，v0.3.0）
+
+claude 启动时按优先级**逐键**合并 `--settings`（命令行，最高）与用户级 `~/.claude/settings.json`（cc-switch 切换供应商时写入）。两边都有的键命令行获胜，但**只存在于用户级的 env 键会直接漏进会话**（如激活供应商专属的 `ANTHROPIC_MODEL`），且 env 的优先级高于 settings 的 `model` 字段——症状是 base URL 正确但模型跟随 cc-switch 的全局激活供应商。
+
+对策（cli.js 在 buildEffectiveConfig 之后、launch 之前接线）：
+
+- 读取用户级 settings.json（`CLAUDE_CONFIG_DIR` 优先，否则 `~/.claude`）；文件缺失属正常不告警，解析失败打警告并跳过屏蔽（不中断启动）
+- 纯函数 `maskLeakedEnvKeys`：live env 有、effective env 没有的键，在 effective env 中显式置**空字符串**——逐键合并时以最高优先级压掉泄漏值，claude 视空串为未设置（实测 `ANTHROPIC_MODEL: ''` 回落到正常 model 解析）
+- 已知残余限制：顶层 `model` 字段不屏蔽（通用配置通常已提供 model，实践中不受影响）
 
 ## 7. 启动（launcher.js）
 

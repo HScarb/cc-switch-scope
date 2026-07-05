@@ -38,5 +38,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - 运行：`node src/cli.js --list`（用 `CC_SWITCH_DIR=<fixture目录>` 隔离真实数据）
 - 测试：`npm test`（即 `node --test "test/*.test.js"`；`node --test test/` 在 Windows Node 24 下不可用）
-- 本地安装验证：`npm link` 后直接运行 `ccscope`
-- 发布 npm：本机默认 registry 是 npmmirror 镜像（只读），必须 `npm publish --registry https://registry.npmjs.org/`，且账号开了 2FA 需带 `--otp=<验证码>`（时效约 30 秒，由用户执行）
+- 本地安装验证：`npm link` 后直接运行 `ccscope`（注意：之后任何 `npm i -g cc-switch-scope` 都会覆盖掉软链）
+
+## 提交与发布流程
+
+1. 升级 `package.json` 的 `version`（semver），`npm test` 全绿后按 conventional commits 提交
+2. `npm publish --dry-run --registry https://registry.npmjs.org/` 核对 tarball 文件清单
+3. 发布**由用户执行**（账号开了 2FA，走浏览器认证或 `--otp=<验证码>`，时效约 30 秒）：`npm publish --registry https://registry.npmjs.org/`——本机默认 registry 是 npmmirror 镜像（只读），不带 `--registry` 会发不上去
+4. `git push` 到 GitHub
+5. 验证安装必须指定官方源 `npm i -g cc-switch-scope --registry https://registry.npmjs.org/`：npmmirror 同步有延迟，默认源会装回旧版；可主动触发镜像同步：`curl -X PUT https://registry-direct.npmmirror.com/-/package/cc-switch-scope/syncs`
