@@ -1,6 +1,6 @@
 {
   "name": "cc-switch-scope",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Session-scoped Claude Code launcher backed by CC-Switch data",
   "bin": { "ccscope": "src/cli.js" },
   "engines": { "node": ">=22.13.0" },
