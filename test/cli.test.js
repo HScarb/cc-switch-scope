@@ -2,7 +2,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { parseArgs, fuzzyMatch } = require('../src/cli');
+const { parseArgs, fuzzyMatch, resolveQuery, providerHost } = require('../src/cli');
 
 const argv = (...args) => ['node', 'cli.js', ...args];
 
@@ -53,4 +53,67 @@ test('fuzzyMatch: 多匹配优先 current，其次首个', () => {
 
 test('fuzzyMatch: 无匹配返回 null', () => {
   assert.equal(fuzzyMatch([{ name: 'A', isCurrent: false }], 'zzz').selected, null);
+});
+
+test('fuzzyMatch: 精确匹配优先于 current', () => {
+  const providers = [
+    { name: 'kimi', isCurrent: false },
+    { name: 'kimi-pro', isCurrent: true },
+  ];
+  const r = fuzzyMatch(providers, 'kimi');
+  assert.equal(r.selected.name, 'kimi');
+  assert.equal(r.exact, true);
+  assert.equal(r.matches.length, 2);
+});
+
+test('fuzzyMatch: 前缀匹配优先于中缀匹配', () => {
+  const providers = [
+    { name: 'my-glm', isCurrent: true },
+    { name: 'glm-air', isCurrent: false },
+  ];
+  const r = fuzzyMatch(providers, 'glm');
+  assert.equal(r.selected.name, 'glm-air');
+  assert.equal(r.exact, false);
+});
+
+test('fuzzyMatch: 精确匹配大小写不敏感', () => {
+  const providers = [{ name: 'DeepSeek', isCurrent: false }];
+  assert.equal(fuzzyMatch(providers, 'deepseek').exact, true);
+});
+
+const three = [
+  { name: 'kimi', isCurrent: false },
+  { name: 'deepseek', isCurrent: true },
+  { name: 'glm', isCurrent: false },
+];
+
+test('resolveQuery: 纯数字按序号直选（1 起）', () => {
+  assert.equal(resolveQuery(three, '1').selected.name, 'kimi');
+  assert.equal(resolveQuery(three, '3').selected.name, 'glm');
+  assert.equal(resolveQuery(three, '2').kind, 'index');
+});
+
+test('resolveQuery: 序号越界报 index-out-of-range', () => {
+  assert.equal(resolveQuery(three, '0').kind, 'index-out-of-range');
+  assert.equal(resolveQuery(three, '4').kind, 'index-out-of-range');
+});
+
+test('resolveQuery: 名字查询区分 match / ambiguous / no-match', () => {
+  assert.equal(resolveQuery(three, 'deep').kind, 'match');
+  assert.equal(resolveQuery(three, 'zzz').kind, 'no-match');
+  const two = [
+    { name: 'kimi-a', isCurrent: false },
+    { name: 'kimi-b', isCurrent: false },
+  ];
+  assert.equal(resolveQuery(two, 'kimi').kind, 'ambiguous');
+  assert.equal(resolveQuery(two, 'kimi-a').kind, 'match'); // 精确命中不算歧义
+});
+
+test('providerHost: 提取 base URL 的 host，缺省/非法时降级', () => {
+  const p = (url) => ({ config: { env: { ANTHROPIC_BASE_URL: url } } });
+  assert.equal(providerHost(p('https://api.example.com/v1')), 'api.example.com');
+  assert.equal(providerHost(p('not a url')), 'not a url'); // 非法 URL 原样展示
+  assert.equal(providerHost(p('')), null);
+  assert.equal(providerHost({ config: { env: {} } }), null);
+  assert.equal(providerHost({ config: {} }), null);
 });

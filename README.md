@@ -29,10 +29,11 @@ npm link   # 之后可在任意目录使用 ccscope
 ## 使用
 
 ```bash
-ccscope                    # 交互菜单选择供应商（↑/↓ 移动，回车确认，Esc 取消）
-ccscope deep               # 模糊匹配供应商名（大小写不敏感，多个匹配时优先 current）
+ccscope                    # 交互菜单选择供应商（↑/↓/j/k 移动，数字 1-9 直选，回车确认，Esc 取消）
+ccscope deep               # 模糊匹配供应商名（大小写不敏感；精确 > 前缀 > current，歧义时进菜单确认）
+ccscope 2                  # 按 --list 中的序号直接启动
 ccscope deep -- -r         # -- 之后的参数原样透传给 claude
-ccscope --list             # 仅列出供应商（标注 current 与数据目录），不启动
+ccscope --list             # 仅列出供应商（标注 current、base URL 与数据目录），不启动
 ccscope --no-skip          # 不追加 --dangerously-skip-permissions
 ccscope --version          # 显示版本
 ccscope --help             # 显示帮助

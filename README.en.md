@@ -29,10 +29,11 @@ npm link   # then use ccscope from anywhere
 ## Usage
 
 ```bash
-ccscope                    # interactive menu (↑/↓ to move, Enter to confirm, Esc to cancel)
-ccscope deep               # fuzzy match by provider name (case-insensitive; prefers current on multiple matches)
+ccscope                    # interactive menu (↑/↓/j/k to move, 1-9 to pick directly, Enter to confirm, Esc to cancel)
+ccscope deep               # fuzzy match by provider name (case-insensitive; exact > prefix > current, menu on ambiguity)
+ccscope 2                  # launch by index as shown in --list
 ccscope deep -- -r         # everything after -- is passed through to claude verbatim
-ccscope --list             # list providers (marks current and the data directory) without launching
+ccscope --list             # list providers (with current marker, base URL and data directory) without launching
 ccscope --no-skip          # do not append --dangerously-skip-permissions
 ccscope --version          # show version
 ccscope --help             # show help

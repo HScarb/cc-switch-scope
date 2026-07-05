@@ -37,23 +37,60 @@ function parseArgs(argv) {
   return parsed;
 }
 
-/** 模糊匹配：大小写不敏感 includes；多匹配优先 current，其次首个（设计 §8） */
+/**
+ * 模糊匹配：大小写不敏感 includes（设计 §8）。
+ * 多匹配时的优先级：精确匹配 > 前缀匹配 > current > 首个——
+ * 用户打全了名字就不该被 current 抢走（如 "kimi" 命中 kimi 而非 current 的 kimi-pro）。
+ */
 function fuzzyMatch(providers, query) {
   const q = query.toLowerCase();
   const matches = providers.filter((p) => p.name.toLowerCase().includes(q));
-  if (matches.length === 0) return { selected: null, matches };
-  const selected = matches.find((m) => m.isCurrent) || matches[0];
-  return { selected, matches };
+  if (matches.length === 0) return { selected: null, matches, exact: false };
+  const exactPool = matches.filter((m) => m.name.toLowerCase() === q);
+  const prefixPool = matches.filter((m) => m.name.toLowerCase().startsWith(q));
+  const pool = exactPool.length > 0 ? exactPool : prefixPool.length > 0 ? prefixPool : matches;
+  const selected = pool.find((m) => m.isCurrent) || pool[0];
+  return { selected, matches, exact: exactPool.length > 0 };
+}
+
+/**
+ * 查询解析：纯数字按 --list 序号直选；否则走 fuzzyMatch。
+ * kind: 'index' | 'index-out-of-range' | 'match' | 'ambiguous' | 'no-match'
+ */
+function resolveQuery(providers, query) {
+  if (/^\d+$/.test(query)) {
+    const n = Number(query);
+    if (n >= 1 && n <= providers.length) {
+      return { kind: 'index', selected: providers[n - 1], matches: [providers[n - 1]] };
+    }
+    return { kind: 'index-out-of-range', selected: null, matches: [] };
+  }
+  const { selected, matches, exact } = fuzzyMatch(providers, query);
+  if (!selected) return { kind: 'no-match', selected: null, matches };
+  const ambiguous = matches.length > 1 && !exact;
+  return { kind: ambiguous ? 'ambiguous' : 'match', selected, matches };
+}
+
+/** 供 --list 展示的供应商 base URL host（不含密钥）；无配置或非法 URL 时尽力降级 */
+function providerHost(provider) {
+  const raw = provider?.config?.env?.ANTHROPIC_BASE_URL;
+  if (typeof raw !== 'string' || raw.trim() === '') return null;
+  try {
+    return new URL(raw.trim()).host;
+  } catch {
+    return raw.trim();
+  }
 }
 
 function printHelp() {
   console.log(`ccscope — 会话级 Claude Code 启动器（读取 CC-Switch 供应商配置）
 
 用法:
-  ccscope                    交互菜单选择供应商
-  ccscope <name>             模糊匹配供应商名后启动
+  ccscope                    交互菜单选择供应商（↑/↓/j/k 移动，数字直选，回车确认）
+  ccscope <name>             模糊匹配供应商名后启动（精确 > 前缀 > current）
+  ccscope <序号>             按 --list 中的序号直接启动
   ccscope <name> -- <args>   -- 之后的参数透传给 claude
-  ccscope --list             列出供应商（标注 current 与数据目录）
+  ccscope --list             列出供应商（标注 current、base URL 与数据目录）
 
 选项:
   -l, --list      仅列出供应商，不启动
@@ -88,28 +125,46 @@ async function main() {
 
   if (parsed.list) {
     console.log(`数据目录: ${resolved.dir} (${resolved.source})\n`);
+    const nameWidth = Math.max(...providers.map((p) => p.name.length));
     providers.forEach((p, i) => {
       const marker = p.isCurrent ? '  ● current' : '';
-      console.log(`  ${String(i + 1).padStart(2)}  ${p.name}${marker}`);
+      const host = providerHost(p);
+      console.log(
+        `  ${String(i + 1).padStart(2)}  ${p.name.padEnd(nameWidth)}` +
+        `${host ? `  ${host}` : ''}${marker}`
+      );
     });
     return 0;
   }
 
   let selected;
   if (parsed.query) {
-    const { selected: match, matches } = fuzzyMatch(providers, parsed.query);
-    if (!match) {
+    const r = resolveQuery(providers, parsed.query);
+    if (r.kind === 'index-out-of-range') {
+      console.error(
+        `序号超出范围: ${parsed.query}（有效范围 1-${providers.length}，ccscope --list 查看列表）`
+      );
+      return 1;
+    }
+    if (r.kind === 'no-match') {
       const names = providers.map((p) => p.name).join(' / ');
       console.error(`没有匹配 "${parsed.query}" 的供应商。可选: ${names}`);
       return 1;
     }
-    if (matches.length > 1) {
-      console.log(
-        `多个匹配: ${matches.map((m) => m.name).join(', ')}` +
-        `，使用: ${match.name}${match.isCurrent ? ' (current)' : ''}`
-      );
+    if (r.kind === 'ambiguous' && process.stdin.isTTY) {
+      // 多个匹配且可交互：让用户从匹配子集中确认，而不是替用户拍板
+      console.log(`多个供应商匹配 "${parsed.query}":`);
+      selected = await selectProvider(r.matches);
+      if (!selected) return 0;
+    } else {
+      if (r.kind === 'ambiguous') {
+        console.log(
+          `多个匹配: ${r.matches.map((m) => m.name).join(', ')}` +
+          `，使用: ${r.selected.name}${r.selected.isCurrent ? ' (current)' : ''}`
+        );
+      }
+      selected = r.selected;
     }
-    selected = match;
   } else {
     if (!process.stdin.isTTY) {
       console.error('非交互终端下请直接指定供应商名: ccscope <name>');
@@ -128,7 +183,7 @@ async function main() {
   } catch (err) { console.error(err.message); return 1; }
 }
 
-module.exports = { parseArgs, fuzzyMatch };
+module.exports = { parseArgs, fuzzyMatch, resolveQuery, providerHost };
 
 if (require.main === module) {
   main().then(
