@@ -25,13 +25,20 @@ function parseArgs(argv) {
 
   const parsed = {
     help: false, version: false, list: false, noSkip: false,
+    resume: false, resumeId: null,
     query: null, claudeArgs, unknown: [],
   };
-  for (const arg of own) {
+  for (let i = 0; i < own.length; i++) {
+    const arg = own[i];
     if (arg === '-h' || arg === '--help') parsed.help = true;
     else if (arg === '-V' || arg === '--version') parsed.version = true;
     else if (arg === '-l' || arg === '--list') parsed.list = true;
     else if (arg === '--no-skip') parsed.noSkip = true;
+    else if (arg === '-r' || arg === '--resume') {
+      // 贪婪取值：紧跟的非横杠参数一律视为 sessionId（供应商名放 --resume 之前，见 help）
+      parsed.resume = true;
+      if (i + 1 < own.length && !own[i + 1].startsWith('-')) parsed.resumeId = own[++i];
+    }
     else if (arg.startsWith('-')) parsed.unknown.push(arg);
     else if (parsed.query === null) parsed.query = arg;
   }
@@ -91,10 +98,13 @@ function printHelp() {
   ccscope <name>             模糊匹配供应商名后启动（精确 > 前缀 > current）
   ccscope <序号>             按 --list 中的序号直接启动
   ccscope <name> -- <args>   -- 之后的参数透传给 claude
+  ccscope [name] --resume [sessionId]
+                             恢复 Claude Code 会话（不带 sessionId 时进入 claude 内置会话选择器）
   ccscope --list             列出供应商（标注 current、base URL 与数据目录）
 
 选项:
   -l, --list      仅列出供应商，不启动
+  -r, --resume [id]  恢复会话；紧跟的非横杠参数视为 sessionId，供应商名请放在 --resume 之前
   --no-skip       不追加 --dangerously-skip-permissions
   -V, --version   显示版本
   -h, --help      显示帮助`);
@@ -186,8 +196,14 @@ async function main() {
   if (liveWarning) console.error(`警告: ${liveWarning}`);
   const isolated = maskLeakedEnvKeys(effective, liveSettings);
   // buildSpawnSpec 的双引号校验等属预期用户错误：只打消息，不带堆栈、不走「内部错误」兜底
+  // resume 参数排在用户 -- 透传参数之前：用户显式透传同名参数时由 claude 按后者优先
+  const resumeArgs = parsed.resume
+    ? ['--resume', ...(parsed.resumeId ? [parsed.resumeId] : [])]
+    : [];
   try {
-    return await launch(selected, isolated, { noSkip: parsed.noSkip, extraArgs: parsed.claudeArgs });
+    return await launch(selected, isolated, {
+      noSkip: parsed.noSkip, extraArgs: [...resumeArgs, ...parsed.claudeArgs],
+    });
   } catch (err) { console.error(err.message); return 1; }
 }
 

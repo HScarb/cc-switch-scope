@@ -39,7 +39,9 @@ npm link   # 之后可在任意目录使用 ccscope
 ccscope                    # 交互菜单选择供应商（↑/↓/j/k 移动，数字 1-9 直选，回车确认，Esc 取消）
 ccscope deep               # 模糊匹配供应商名（大小写不敏感；精确 > 前缀 > current，歧义时进菜单确认）
 ccscope 2                  # 按 --list 中的序号直接启动
-ccscope deep -- -r         # -- 之后的参数原样透传给 claude
+ccscope deep --resume      # 以 deep 供应商恢复会话（进入 claude 内置会话选择器）
+ccscope deep -r <sessionId>  # 直接恢复指定会话；恢复时使用本次所选供应商的配置，可换供应商续聊
+ccscope deep -- --model opus # -- 之后的参数原样透传给 claude
 ccscope --list             # 仅列出供应商（标注 current、base URL 与数据目录），不启动
 ccscope --no-skip          # 不追加 --dangerously-skip-permissions
 ccscope --version          # 显示版本

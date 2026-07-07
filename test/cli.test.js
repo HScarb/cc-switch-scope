@@ -33,6 +33,52 @@ test('parseArgs: 未知标志收集到 unknown', () => {
   assert.deepEqual(parseArgs(argv('--bogus')).unknown, ['--bogus']);
 });
 
+test('parseArgs: --resume 单独出现 → resume 为 true，无 sessionId', () => {
+  const p = parseArgs(argv('--resume'));
+  assert.equal(p.resume, true);
+  assert.equal(p.resumeId, null);
+});
+
+test('parseArgs: --resume 贪婪取值，紧跟的非横杠参数视为 sessionId', () => {
+  const p = parseArgs(argv('--resume', 'abc123'));
+  assert.equal(p.resume, true);
+  assert.equal(p.resumeId, 'abc123');
+  assert.equal(p.query, null); // sessionId 不落进供应商查询
+});
+
+test('parseArgs: 供应商名与 --resume sessionId 共存', () => {
+  const p = parseArgs(argv('deep', '--resume', 'abc123'));
+  assert.equal(p.query, 'deep');
+  assert.equal(p.resumeId, 'abc123');
+});
+
+test('parseArgs: -r 与 --resume 等价', () => {
+  const p = parseArgs(argv('-r', 'abc123'));
+  assert.equal(p.resume, true);
+  assert.equal(p.resumeId, 'abc123');
+});
+
+test('parseArgs: --resume 后跟标志时不吞值', () => {
+  const p = parseArgs(argv('--resume', '--no-skip'));
+  assert.equal(p.resume, true);
+  assert.equal(p.resumeId, null);
+  assert.equal(p.noSkip, true);
+});
+
+test('parseArgs: --resume 取值后剩余位置参数仍作供应商查询', () => {
+  const p = parseArgs(argv('--resume', 'abc', 'deep'));
+  assert.equal(p.resumeId, 'abc');
+  assert.equal(p.query, 'deep');
+});
+
+test('parseArgs: --resume 与 -- 透传互不干扰', () => {
+  const p = parseArgs(argv('deep', '--resume', '--', '--model', 'opus'));
+  assert.equal(p.query, 'deep');
+  assert.equal(p.resume, true);
+  assert.equal(p.resumeId, null);
+  assert.deepEqual(p.claudeArgs, ['--model', 'opus']);
+});
+
 test('fuzzyMatch: 大小写不敏感 includes', () => {
   const providers = [{ name: 'DeepSeek', isCurrent: false }];
   assert.equal(fuzzyMatch(providers, 'deep').selected.name, 'DeepSeek');

@@ -39,7 +39,9 @@ npm link   # then use ccscope from anywhere
 ccscope                    # interactive menu (↑/↓/j/k to move, 1-9 to pick directly, Enter to confirm, Esc to cancel)
 ccscope deep               # fuzzy match by provider name (case-insensitive; exact > prefix > current, menu on ambiguity)
 ccscope 2                  # launch by index as shown in --list
-ccscope deep -- -r         # everything after -- is passed through to claude verbatim
+ccscope deep --resume      # resume a session with provider deep (opens claude's built-in session picker)
+ccscope deep -r <sessionId>  # resume a specific session; it runs with the provider you just picked, so you can switch providers mid-conversation
+ccscope deep -- --model opus # everything after -- is passed through to claude verbatim
 ccscope --list             # list providers (with current marker, base URL and data directory) without launching
 ccscope --no-skip          # do not append --dangerously-skip-permissions
 ccscope --version          # show version
