@@ -7,20 +7,87 @@
 
 在现有"每个终端会话独立绑定 Claude 供应商"能力之上，扩展为**每个会话可选择性地只暴露一组预定义的 skill/插件**，实现会话间的 Skill 隔离。不与 cc-switch 数据格式耦合，独立配置文件独立维护。
 
-## 2. 技术背景
+## 2. 技术背景：Claude Code 的 skill 管控机制
 
-Claude Code 的 skill 管控机制（详情参见 `2026-07-04-cc-switch-scope-design.md` 的对话式调研）：
+本节是整个设计的地基。设计中所有"为什么必须这样做"的答案都在这里。
 
-| 机制 | 管控范围 | 粒度 | "默认关闭"？ |
-|---|---|---|---|
-| `skillOverrides` | 用户级/项目级/bundled skill | 逐个 skill | ❌ absent = on |
-| `enabledPlugins` | 插件 skill | 逐个插件 | ✅ absent/false = off |
-| `disableBundledSkills` | 内置 skill | 全部开关 | ✅ |
+### 2.1 skill 从哪里来（四个来源）
 
-- **`skillOverrides` absent 即 on**：实现白名单（allowlist）必须枚举所有已安装 skill，不在白名单内的一律标 "off"
-- **`--settings` 与用户 settings.json 逐键合并**：ccscope 的 `--settings` 文件只覆盖显式指定的键，不隐式移除用户级的键——因此 `skillOverrides` 和 `enabledPlugins` 必须完整列举，漏掉的会从用户级配置漏进来
-- **插件 skill 不受 `skillOverrides` 管理**：需 `enabledPlugins` 按插件名整体开关
-- **内置 skill**：通过 `disableBundledSkills: true` 整体关闭，开则全部可用（不可逐条屏蔽）
+claude 启动时会从四个地方收集 skill，全部汇入同一个会话：
+
+| 来源 | 位置 | 举例 |
+|---|---|---|
+| ① 用户级 skill | `~/.claude/skills/<名字>/SKILL.md`（目录名即 skill 名） | 自己装的 `commit`、`code-review` |
+| ② 项目级 skill | 项目仓库里的 `.claude/skills/<名字>/SKILL.md`，从当前目录逐级向上找到仓库根 | 仓库自带的团队 skill |
+| ③ 插件 skill | 通过 plugin marketplace 安装的插件附带，名字带命名空间前缀 | `commit-commands:commit`、`superpowers:brainstorming` |
+| ④ 内置 skill | Claude Code 程序自身携带，不在磁盘上以目录形式存在 | `/init`、`/review`、`/security-review` |
+
+补充两点：
+
+- ①② 还各有一个 legacy 形态：`.claude/commands/<名字>.md`（老的"自定义斜杠命令"）。官方已把 commands 和 skills 统一为同一套机制——`commands/deploy.md` 和 `skills/deploy/SKILL.md` 都产生 `/deploy`，管控方式也相同。所以本设计中凡是说"skill"，都包含 legacy commands。
+- ③ 的插件 skill 名字里一定带 `:`（如 `commit-commands:commit`），这是区分它和 ①②④ 的可靠特征。
+
+### 2.2 每类 skill 的开关（三个 settings 键）
+
+Claude Code 没有统一的"skill 白名单"配置，而是三个各管一摊的 settings 键：
+
+**键 1：`skillOverrides`——管 ①②④（用户级、项目级、内置）**
+
+```json
+{ "skillOverrides": { "deploy": "off", "commit": "on" } }
+```
+
+按 skill 名逐个控制，值为 `"on"` / `"off"` / `"name-only"` / `"user-invocable-only"`。`"off"` 的效果是这个 skill 从会话中彻底消失（模型看不到它，不只是禁止调用）。
+
+**关键陷阱：没写进 `skillOverrides` 的 skill 默认是 `"on"`。** 它天生是"黑名单"机制——只能点名关闭，不能表达"默认全关、只开这几个"。所以要实现白名单语义，唯一的办法是：**先扫描出环境里所有已安装的 skill，把不在白名单里的每一个都显式写 `"off"`**。这就是本设计需要 `skills-scan.js` 扫描模块的根本原因。
+
+另外，`skillOverrides` 里写了不存在的 skill 名不会报错，会被静默忽略——所以白名单里的名字拼错了 claude 不会提醒，得由 ccscope 在启动时自己校验并告警（见 §7）。
+
+**键 2：`enabledPlugins`——管 ③（插件）**
+
+```json
+{ "enabledPlugins": { "commit-commands": true, "codex": false } }
+```
+
+按**插件名**开关，`false` 或未安装即整个插件（连同它带的所有 skill）消失。
+
+**关键限制：插件 skill 不受 `skillOverrides` 管**——官方文档明确排除。想只留插件里的某一个 skill、关掉同插件的其他 skill，做不到；粒度就是整个插件。这就是配置文件里 `skills` 与 `plugins` 必须分成两个字段、且 `skills` 里出现带 `:` 的名字要报错的原因。
+
+**键 3：`disableBundledSkills`——管 ④（内置）**
+
+```json
+{ "disableBundledSkills": true }
+```
+
+一键关掉全部内置 skill。理论上 `skillOverrides` 也能逐个覆盖内置 skill，但内置列表不是稳定 API（随 Claude Code 版本增减），无法可靠枚举——所以对内置 skill 只提供整体开/关两档（配置字段 `bundledSkills`）。
+
+### 2.3 开关怎么送进会话：`--settings` 与逐键合并
+
+ccscope 本来就是把供应商配置写进临时文件、以 `claude --settings <临时文件>` 启动的。上面三个键都是合法的 settings 键，直接写进这个临时文件即可生效，不需要任何新的传递通道。
+
+但 claude 对多层配置（`--settings` > 用户级 `~/.claude/settings.json` > 项目级 …）的合并是**逐键合并，不是整体替换**：`--settings` 里写了的键赢，没写的键继续用低层的值。而且 `skillOverrides`、`enabledPlugins` 这类对象的合并深入到**每个 skill 名/插件名**：
+
+> 用户 settings.json 里有 `enabledPlugins: {"a": true, "b": true}`，
+> ccscope 的 `--settings` 只传 `{"a": false}`，
+> 结果是 a 关了、**b 依然开着**（b 这个键没被覆盖，用户级的 true 存活）。
+
+`skillOverrides` 同理。**推论：白名单要想不漏，`--settings` 里必须完整列举所有要关的 skill 和插件，漏写一个，那一个就从用户级配置漏进会话。** 这也是 §3.2 中 `applySkillset` 必须拿到"扫描全集"（scanned）和"用户已装插件全集"（livePlugins）两个输入的原因。
+
+同一个逐键合并规则也决定了一个细节：白名单内的 skill 要显式写 `"on"`，而不是不写——万一用户自己的 settings.json 里已把它设成 `"off"`，不写就开不起来；skillset 的语义是"本次会话我说了算"，显式 `"on"` 才能压过去。
+
+### 2.4 走不通的路线（为什么不用别的机制）
+
+- **permissions 白名单**：`permissions.deny: ["Skill"]` 会把整个 Skill 工具从模型上下文移除，之后 `allow: ["Skill(foo)"]` 加不回来（deny 永远优先，工具都没了 allow 无处生效）。权限机制做不了"只允许这几个"。
+- **`--disallowedTools` / `--disable-slash-commands` / `--safe-mode`**：都是全关型开关，没有选择性。
+- **`CLAUDE_CONFIG_DIR` 整体搬家**（每个 scope 一个独立配置目录）：隔离最彻底，但 Windows/Linux 上要重新登录、`~/.claude.json`（OAuth/MCP 状态）不跟着搬、还有 `~/.claude/CLAUDE.md` 泄漏的已知 bug（anthropics/claude-code#25762），运维成本远高于收益，评估后弃用。
+
+### 2.5 小结
+
+| 机制 | 管控范围 | 粒度 | 能表达"默认关闭"？ | 本设计的用法 |
+|---|---|---|---|---|
+| `skillOverrides` | 用户级/项目级/内置 skill | 逐个 skill | ❌ 未列举 = on | 扫描全集后，白名单外全写 `"off"`，白名单内写 `"on"` |
+| `enabledPlugins` | 插件（含其所有 skill） | 逐个插件 | ✅ false = off | 用户已装插件全集中，白名单外全写 `false` |
+| `disableBundledSkills` | 内置 skill | 整体开关 | ✅ | `bundledSkills: false` 时注入 `true` |
 
 ## 3. 新模块结构
 
